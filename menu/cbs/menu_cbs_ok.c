@@ -4448,6 +4448,49 @@ static int action_ok_cheat_auto_load_toggle(const char *path,
                   |  MENU_ST_FLAG_PREVENT_POPULATE;
    return 0;
 }
+
+static int action_ok_cheat_set_override(const char *path,
+      const char *label, unsigned type, size_t idx, size_t entry_idx)
+{
+   /* Use same approach as CHEAT_FILE_LOAD - open cheat database for selection */
+   return generic_action_ok_displaylist_push(path, NULL, label, type, idx, entry_idx, ACTION_OK_DL_CHEAT_FILE);
+}
+
+static int action_ok_cheat_clear_override(const char *path,
+      const char *label, unsigned type, size_t idx, size_t entry_idx)
+{
+   struct menu_state *menu_st = menu_state_get_ptr();
+   
+   cheat_manager_clear_current_game_override();
+   
+   /* Refresh menu to update display */
+   menu_st->flags |= MENU_ST_FLAG_ENTRIES_NEED_REFRESH
+                  |  MENU_ST_FLAG_PREVENT_POPULATE;
+   return 0;
+}
+
+static int action_ok_cheat_file_set_as_override(const char *path,
+      const char *label, unsigned type, size_t idx, size_t entry_idx)
+{
+   struct menu_state *menu_st = menu_state_get_ptr();
+   
+   if (path && strlen(path) > 0)
+   {
+      /* Set the selected file as the override for this game */
+      cheat_manager_set_current_game_override(path);
+      
+      /* Immediately load the override cheat file */
+      if (cheat_manager_load(path, true))
+      {
+         RARCH_LOG("[Cheats][override] Loaded override cheat file: \"%s\"\n", path);
+      }
+   }
+   
+   /* Return to cheats menu */
+   menu_st->flags |= MENU_ST_FLAG_ENTRIES_NEED_REFRESH
+                  |  MENU_ST_FLAG_PREVENT_POPULATE;
+   return 0;
+}
 #endif
 
 static int action_ok_start_recording(const char *path,
@@ -8980,6 +9023,19 @@ static int menu_cbs_init_bind_ok_compare_label(menu_file_list_cbs_t *cbs,
       BIND_ACTION_OK(cbs, action_ok_cheat_auto_load_toggle);
       return 0;
    }
+   
+   /* Handle cheat override actions */
+   if (string_is_equal(label, "cheat_set_override"))
+   {
+      BIND_ACTION_OK(cbs, action_ok_cheat_set_override);
+      return 0;
+   }
+   
+   if (string_is_equal(label, "cheat_clear_override"))
+   {
+      BIND_ACTION_OK(cbs, action_ok_cheat_clear_override);
+      return 0;
+   }
 
    if (menu_setting_get_browser_selection_type(cbs->setting) == ST_DIR)
    {
@@ -9641,6 +9697,10 @@ static int menu_cbs_init_bind_ok_compare_type(menu_file_list_cbs_t *cbs,
                      msg_hash_to_str(MENU_ENUM_LABEL_CHEAT_FILE_LOAD_APPEND)))
             {
                BIND_ACTION_OK(cbs, action_ok_cheat_file_load_append);
+            }
+            else if (string_is_equal(label, "cheat_set_override"))
+            {
+               BIND_ACTION_OK(cbs, action_ok_cheat_file_set_as_override);
             }
             else
             {

@@ -779,6 +779,25 @@ unsigned cheat_manager_auto_resolve_and_load_for_current_content(
    *loaded_exact_match = false;
    *has_multiple_candidates = false;
    
+   /* Check for override first - takes priority over auto-matching */
+   const char *override_path = cheat_manager_get_current_game_override();
+   if (override_path && path_is_valid(override_path))
+   {
+      RARCH_LOG("[Cheats][override] Using override cheat file: \"%s\"\n", override_path);
+      
+      if (cheat_manager_load(override_path, true))
+      {
+         *loaded_exact_match = true;
+         return 1;
+      }
+      else
+      {
+         RARCH_LOG("[Cheats][override] Failed to load override cheat file: \"%s\"\n", override_path);
+         /* Clear invalid override and continue with auto-matching */
+         cheat_manager_clear_current_game_override();
+      }
+   }
+   
    if (!core_get_system_info(&sysinfo))
       return 0;
       
@@ -872,6 +891,39 @@ unsigned cheat_manager_auto_resolve_and_load_for_current_content(
    
    string_list_free(dir_list);
    return candidates_found;
+}
+
+void cheat_manager_set_current_game_override(const char *cheat_file_path)
+{
+   cheat_manager_t *cheat_st = &cheat_manager_state;
+   
+   if (cheat_file_path && strlen(cheat_file_path) > 0)
+   {
+      strlcpy(cheat_st->current_game_override_path, cheat_file_path, 
+              sizeof(cheat_st->current_game_override_path));
+      RARCH_LOG("[Cheats][override] Set cheat override for current game: \"%s\"\n", 
+                cheat_file_path);
+   }
+   else
+   {
+      cheat_st->current_game_override_path[0] = '\0';
+      RARCH_LOG("[Cheats][override] Cleared cheat override for current game\n");
+   }
+}
+
+const char *cheat_manager_get_current_game_override(void)
+{
+   cheat_manager_t *cheat_st = &cheat_manager_state;
+   
+   if (cheat_st->current_game_override_path[0] == '\0')
+      return NULL;
+      
+   return cheat_st->current_game_override_path;
+}
+
+void cheat_manager_clear_current_game_override(void)
+{
+   cheat_manager_set_current_game_override(NULL);
 }
 
 int cheat_manager_initialize_memory(rarch_setting_t *setting, size_t idx, bool wraparound)

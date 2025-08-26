@@ -8497,6 +8497,41 @@ unsigned menu_displaylist_build_list(
                            MENU_SETTING_ACTION, 0, 0, NULL))
                      count++;
                }
+               /* Show current override status and management options */
+               {
+                  const char *override_path = cheat_manager_get_current_game_override();
+                  char override_label[256];
+                  
+                  if (override_path)
+                  {
+                     char short_name[128];
+                     strlcpy(short_name, path_basename_nocompression(override_path), sizeof(short_name));
+                     snprintf(override_label, sizeof(override_label), 
+                           "Override: %s", short_name);
+                  }
+                  else
+                  {
+                     strlcpy(override_label, "Set cheat override for this game", sizeof(override_label));
+                  }
+                  
+                  if (menu_entries_append(list,
+                           override_label,
+                           "cheat_set_override",
+                           0, /* placeholder enum */
+                           MENU_SETTING_ACTION, 0, 0, NULL))
+                     count++;
+                     
+                  /* Show clear option only if override is set */
+                  if (override_path)
+                  {
+                     if (menu_entries_append(list,
+                              "Clear cheat override",
+                              "cheat_clear_override", 
+                              0, /* placeholder enum */
+                              MENU_SETTING_ACTION, 0, 0, NULL))
+                        count++;
+                  }
+               }
                if (menu_entries_append(list,
                         msg_hash_to_str(MENU_ENUM_LABEL_VALUE_CHEAT_FILE_LOAD),
                         msg_hash_to_str(MENU_ENUM_LABEL_CHEAT_FILE_LOAD),

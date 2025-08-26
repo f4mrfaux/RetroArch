@@ -183,6 +183,7 @@ struct cheat_manager
    unsigned browse_address;
    char working_desc[CHEAT_DESC_SCRATCH_SIZE];
    char working_code[CHEAT_CODE_SCRATCH_SIZE];
+   char current_game_override_path[PATH_MAX_LENGTH];
    bool  big_endian;
    bool  memory_initialized;
    bool  memory_search_initialized;
@@ -240,6 +241,10 @@ void cheat_manager_alloc_if_empty(void);
 
 unsigned cheat_manager_auto_resolve_and_load_for_current_content(
     bool *loaded_exact_match, bool *has_multiple_candidates);
+
+void cheat_manager_set_current_game_override(const char *cheat_file_path);
+const char *cheat_manager_get_current_game_override(void);
+void cheat_manager_clear_current_game_override(void);
 
 bool cheat_manager_copy_idx_to_working(unsigned idx);
 
