@@ -1359,7 +1359,36 @@ void command_event_init_cheats(
       return;
 
    cheat_manager_alloc_if_empty();
-   cheat_manager_load_game_specific_cheats(path_cheat_db);
+   
+   /* Try auto-resolution if enabled */
+   if (cheat_manager_state.auto_load_enabled)
+   {
+      bool loaded_exact_match = false;
+      bool has_multiple_candidates = false;
+      unsigned candidates = cheat_manager_auto_resolve_and_load_for_current_content(
+            &loaded_exact_match, &has_multiple_candidates);
+      
+      if (loaded_exact_match)
+      {
+         /* Auto-resolution succeeded - skip manual loading */
+         RARCH_LOG("[Cheats][auto] Auto-resolved and loaded cheats successfully\n");
+      }
+      else if (has_multiple_candidates)
+      {
+         /* Multiple candidates found - user can select from menu */
+         RARCH_LOG("[Cheats][auto] Multiple cheat files found - check Quick Menu > Cheats\n");
+      }
+      else
+      {
+         /* No auto-resolution - fall back to normal manual loading */
+         cheat_manager_load_game_specific_cheats(path_cheat_db);
+      }
+   }
+   else
+   {
+      /* Auto-loading disabled - use normal manual loading */
+      cheat_manager_load_game_specific_cheats(path_cheat_db);
+   }
 
    if (apply_cheats_after_load)
       cheat_manager_apply_cheats(

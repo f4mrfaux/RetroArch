@@ -186,6 +186,7 @@ struct cheat_manager
    bool  big_endian;
    bool  memory_initialized;
    bool  memory_search_initialized;
+   bool  auto_load_enabled;
 };
 
 typedef struct cheat_manager cheat_manager_t;

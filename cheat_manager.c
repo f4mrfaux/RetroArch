@@ -760,6 +760,119 @@ void cheat_manager_alloc_if_empty(void)
       cheat_manager_new(0);
 }
 
+static unsigned cheat_manager_auto_resolve_and_load_for_current_content(
+    bool *loaded_exact_match,
+    bool *has_multiple_candidates)
+{
+   char cheat_dir[PATH_MAX_LENGTH];
+   char search_pattern[PATH_MAX_LENGTH];
+   struct string_list *dir_list      = NULL;
+   struct retro_system_info sysinfo;
+   runloop_state_t *runloop_st       = runloop_state_get_ptr();
+   const char *core_name             = NULL;
+   const char *game_name             = NULL;
+   const char *path_cheat_database   = NULL;
+   unsigned candidates_found         = 0;
+   settings_t *settings              = config_get_ptr();
+   
+   *loaded_exact_match = false;
+   *has_multiple_candidates = false;
+   
+   if (!core_get_system_info(&sysinfo))
+      return 0;
+      
+   core_name = sysinfo.library_name;
+   game_name = path_basename_nocompression(runloop_st->name.cheatfile);
+   
+   if (settings)
+      path_cheat_database = settings->paths.path_cheat_database;
+   
+   if (   string_is_empty(path_cheat_database)
+       || string_is_empty(core_name)
+       || string_is_empty(game_name))
+      return 0;
+   
+   /* Build cheat directory path: cheat_database/core_name/ */
+   fill_pathname_join_special(cheat_dir, path_cheat_database, core_name,
+         sizeof(cheat_dir));
+   
+   if (!path_is_directory(cheat_dir))
+      return 0;
+   
+   /* Search for cheat files matching game name */
+   snprintf(search_pattern, sizeof(search_pattern), "%s*", 
+         path_basename_nocompression(game_name));
+   
+   dir_list = dir_list_new(cheat_dir, "cht", false, true, false, false);
+   
+   if (!dir_list)
+      return 0;
+   
+   /* Look for exact matches first, then partial matches */
+   for (size_t i = 0; i < dir_list->size; i++)
+   {
+      const char *cheat_file_basename = path_basename_nocompression(dir_list->elems[i].data);
+      
+      /* Check for exact game name match (without extension) */
+      if (string_is_equal(cheat_file_basename, game_name))
+      {
+         RARCH_LOG("[Cheats][auto] Exact match found: %s\n", dir_list->elems[i].data);
+         
+         if (cheat_manager_load(dir_list->elems[i].data, true))
+         {
+            *loaded_exact_match = true;
+            candidates_found = 1;
+            break;
+         }
+      }
+   }
+   
+   /* If no exact match, look for partial matches */
+   if (!*loaded_exact_match)
+   {
+      for (size_t i = 0; i < dir_list->size; i++)
+      {
+         const char *cheat_file_basename = path_basename_nocompression(dir_list->elems[i].data);
+         
+         /* Check for partial match (contains game name) */
+         if (strcasestr(cheat_file_basename, game_name) && 
+             !string_is_equal(cheat_file_basename, game_name))
+         {
+            candidates_found++;
+         }
+      }
+      
+      if (candidates_found == 1)
+      {
+         /* Single candidate - load it */
+         for (size_t i = 0; i < dir_list->size; i++)
+         {
+            const char *cheat_file_basename = path_basename_nocompression(dir_list->elems[i].data);
+            
+            if (strcasestr(cheat_file_basename, game_name) && 
+                !string_is_equal(cheat_file_basename, game_name))
+            {
+               RARCH_LOG("[Cheats][auto] Single candidate found: %s\n", dir_list->elems[i].data);
+               
+               if (cheat_manager_load(dir_list->elems[i].data, true))
+               {
+                  *loaded_exact_match = true;
+                  break;
+               }
+            }
+         }
+      }
+      else if (candidates_found > 1)
+      {
+         *has_multiple_candidates = true;
+         RARCH_LOG("[Cheats][auto] Multiple candidates found: %u\n", candidates_found);
+      }
+   }
+   
+   string_list_free(dir_list);
+   return candidates_found;
+}
+
 int cheat_manager_initialize_memory(rarch_setting_t *setting, size_t idx, bool wraparound)
 {
    unsigned i;

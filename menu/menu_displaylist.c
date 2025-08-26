@@ -8485,6 +8485,12 @@ unsigned menu_displaylist_build_list(
                         PARSE_ONLY_BOOL, false) == 0)
                   count++;
                if (menu_entries_append(list,
+                        "Auto-load cheats",
+                        "cheat_auto_load",
+                        0, /* We'll use a custom enum later if needed */
+                        MENU_SETTING_BOOL, 0, 0, NULL))
+                  count++;
+               if (menu_entries_append(list,
                         msg_hash_to_str(MENU_ENUM_LABEL_VALUE_CHEAT_FILE_LOAD),
                         msg_hash_to_str(MENU_ENUM_LABEL_CHEAT_FILE_LOAD),
                         MENU_ENUM_LABEL_CHEAT_FILE_LOAD,
