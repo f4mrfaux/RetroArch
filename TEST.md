@@ -155,6 +155,43 @@ make -j$(nproc)
 
 ---
 
+### ✅ **Test 9: Cheat File Override (ROM Hacks)**
+**Objective**: Test manual override system for ROM hacks where auto-matching fails.
+
+**Setup**:
+- ROM hack file: `Pokemon_Emerald_Randomizer.gba` 
+- Original cheat: `Pokemon_Emerald.cht` in `cheat_database/mgba/`
+- Different cheat: `Pokemon_Ruby.cht` in `cheat_database/mgba/`
+
+**Steps**:
+1. Enable **Auto-load cheats: ON**
+2. Load ROM hack (auto-matching should fail/partial match)
+3. Navigate to **Quick Menu > Cheats** 
+4. Select **"Set cheat override for this game"**
+5. Browse to and select `Pokemon_Emerald.cht` (or any other .cht)
+6. Verify menu shows **"Override: Pokemon_Emerald.cht"**
+7. Exit and reload the same ROM hack
+8. Verify override cheat file loads automatically
+9. Select **"Clear cheat override"** 
+10. Verify menu returns to **"Set cheat override for this game"**
+
+**Expected Result**: ✅ Manual override works, takes priority over auto-matching, clears properly
+
+---
+
+### ✅ **Test 10: Override Cross-System Assignment**
+**Objective**: Test assigning cheat files from different systems.
+
+**Steps**:
+1. Load Game Boy ROM
+2. Set override to SNES cheat file from different system folder
+3. Verify it loads and works (or logs appropriate errors)
+4. Test with various cross-system combinations
+
+**Expected Result**: ✅ System allows cross-assignment, handles gracefully
+
+---
+
 ## Automated Testing Integration
 
 ### Log Messages to Verify
@@ -169,6 +206,13 @@ make -j$(nproc)
 # Multiple candidates
 [Cheats][auto] Multiple candidates found: 3
 [Cheats][auto] Multiple cheat files found - check Quick Menu > Cheats
+
+# Override operations
+[Cheats][override] Set cheat override for current game: "/path/to/override.cht"
+[Cheats][override] Using override cheat file: "/path/to/override.cht" 
+[Cheats][override] Loaded override cheat file: "/path/to/override.cht"
+[Cheats][override] Failed to load override cheat file: "/invalid/path.cht"
+[Cheats][override] Cleared cheat override for current game
 
 # Disable auto-load
 [Cheats][auto] Auto-load cheats disabled
@@ -192,7 +236,8 @@ make -j$(nproc)
 ## Known Limitations  
 1. **Multi-candidate selection**: Currently logs multiple matches but doesn't provide UI selection (future enhancement)
 2. **No hash matching**: Uses filename matching only (database hash matching could be added later)  
-3. **Runtime-only**: Setting doesn't persist between sessions (by design for backwards compatibility)
+3. **Runtime-only**: Settings don't persist between sessions (by design for backwards compatibility)
+4. **Override scope**: Overrides are per-session, not saved permanently (prevents config file changes)
 
 ## Success Criteria
 - ✅ Builds without errors
@@ -201,5 +246,8 @@ make -j$(nproc)
 - ✅ Toggle works as expected
 - ✅ Auto-loading works for exact matches
 - ✅ Graceful fallback for no matches
+- ✅ Override system works for ROM hacks
+- ✅ Cross-system override assignment possible
+- ✅ Override UI updates dynamically 
 - ✅ No crashes or memory leaks
 - ✅ Backwards compatibility maintained
