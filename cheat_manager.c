@@ -22,6 +22,7 @@
 
 #include <file/config_file.h>
 #include <file/file_path.h>
+#include <lists/dir_list.h>
 #include <compat/strl.h>
 #include <compat/posix_string.h>
 #include <string/stdstring.h>
@@ -760,7 +761,7 @@ void cheat_manager_alloc_if_empty(void)
       cheat_manager_new(0);
 }
 
-static unsigned cheat_manager_auto_resolve_and_load_for_current_content(
+unsigned cheat_manager_auto_resolve_and_load_for_current_content(
     bool *loaded_exact_match,
     bool *has_multiple_candidates)
 {

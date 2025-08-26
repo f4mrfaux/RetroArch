@@ -238,6 +238,9 @@ void cheat_manager_state_free(void);
 
 void cheat_manager_alloc_if_empty(void);
 
+unsigned cheat_manager_auto_resolve_and_load_for_current_content(
+    bool *loaded_exact_match, bool *has_multiple_candidates);
+
 bool cheat_manager_copy_idx_to_working(unsigned idx);
 
 bool cheat_manager_copy_working_to_idx(unsigned idx);

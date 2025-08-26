@@ -4431,6 +4431,23 @@ static int action_ok_cheat_reload_cheats(const char *path,
                                    |  MENU_ST_FLAG_PREVENT_POPULATE;
    return 0;
 }
+
+static int action_ok_cheat_auto_load_toggle(const char *path,
+      const char *label, unsigned type, size_t idx, size_t entry_idx)
+{
+   struct menu_state *menu_st = menu_state_get_ptr();
+   
+   /* Toggle the auto-load setting */
+   cheat_manager_state.auto_load_enabled = !cheat_manager_state.auto_load_enabled;
+   
+   RARCH_LOG("[Cheats][auto] Auto-load cheats %s\n", 
+         cheat_manager_state.auto_load_enabled ? "enabled" : "disabled");
+   
+   /* Refresh menu to update the toggle display */
+   menu_st->flags |= MENU_ST_FLAG_ENTRIES_NEED_REFRESH
+                  |  MENU_ST_FLAG_PREVENT_POPULATE;
+   return 0;
+}
 #endif
 
 static int action_ok_start_recording(const char *path,
@@ -8955,6 +8972,13 @@ static int menu_cbs_init_bind_ok_compare_label(menu_file_list_cbs_t *cbs,
             }
          }
       }
+   }
+
+   /* Handle custom auto-load cheat toggle */
+   if (string_is_equal(label, "cheat_auto_load_toggle"))
+   {
+      BIND_ACTION_OK(cbs, action_ok_cheat_auto_load_toggle);
+      return 0;
    }
 
    if (menu_setting_get_browser_selection_type(cbs->setting) == ST_DIR)
