@@ -80,6 +80,20 @@ enum cheat_rumble_type
    RUMBLE_TYPE_END_LIST
 };
 
+/* Auto-load cheat result codes - for enhanced error reporting */
+enum cheat_auto_load_result
+{
+   CHEAT_AUTO_LOAD_SUCCESS = 0,                /* Successfully loaded cheats */
+   CHEAT_AUTO_LOAD_NO_CONTENT = 1,             /* No content loaded */
+   CHEAT_AUTO_LOAD_NO_CORE = 2,                /* No core info available */
+   CHEAT_AUTO_LOAD_NO_DATABASE = 3,            /* Cheat database path not configured */
+   CHEAT_AUTO_LOAD_NO_CORE_DIR = 4,            /* Core-specific cheat directory missing */
+   CHEAT_AUTO_LOAD_NO_MATCHES = 5,             /* No matching cheat files found */
+   CHEAT_AUTO_LOAD_MULTIPLE_MATCHES = 6,       /* Multiple candidates found, manual selection needed */
+   CHEAT_AUTO_LOAD_LOAD_FAILED = 7,            /* Cheat file found but failed to load */
+   CHEAT_AUTO_LOAD_OVERRIDE_INVALID = 8        /* Override file set but invalid */
+};
+
 /* Some codes are ridiculously large - over 10000 bytes */
 #define CHEAT_CODE_SCRATCH_SIZE 16*1024
 #define CHEAT_DESC_SCRATCH_SIZE 255
@@ -239,11 +253,122 @@ void cheat_manager_state_free(void);
 
 void cheat_manager_alloc_if_empty(void);
 
+/**
+ * @brief Automatically resolves and loads cheat files for currently loaded content
+ *
+ * Attempts to automatically find and load appropriate cheat files for the currently
+ * loaded game content. Uses RetroArch's content path and core information to locate
+ * matching cheat files in the configured cheat database directory.
+ *
+ * The function follows this priority order:
+ * 1. Manual override (if set via cheat_manager_set_current_game_override)  
+ * 2. Exact game name match (case-insensitive)
+ * 3. Single partial match containing game name
+ * 4. Multiple candidates (requires manual selection)
+ *
+ * Game name sanitization is applied using RetroArch's label_remove_parens_and_brackets()
+ * to handle regions, compression formats, and special characters consistently.
+ *
+ * @param[out] loaded_exact_match Set to true if an exact name match was loaded
+ * @param[out] has_multiple_candidates Set to true if multiple candidates were found
+ *
+ * @return Number of candidate cheat files found (0 if none, >1 if multiple)
+ *
+ * @note This function maintains backward compatibility and will not break existing workflows
+ * @note Respects the cheats_enable_auto_load configuration setting
+ * 
+ * @see cheat_manager_auto_resolve_and_load_enhanced() for detailed error reporting
+ * @see cheat_manager_set_current_game_override() for manual override management
+ */
 unsigned cheat_manager_auto_resolve_and_load_for_current_content(
     bool *loaded_exact_match, bool *has_multiple_candidates);
 
+/**
+ * @brief Enhanced cheat auto-resolution with comprehensive error reporting
+ *
+ * Provides the same functionality as cheat_manager_auto_resolve_and_load_for_current_content()
+ * but with detailed error codes and enhanced logging for debugging and user feedback.
+ * Maintains full backward compatibility while providing production-ready error handling.
+ *
+ * Error conditions are clearly distinguished:
+ * - CHEAT_AUTO_LOAD_SUCCESS: Cheats successfully loaded
+ * - CHEAT_AUTO_LOAD_NO_CONTENT: No content currently loaded
+ * - CHEAT_AUTO_LOAD_NO_CORE: Core information unavailable
+ * - CHEAT_AUTO_LOAD_NO_DATABASE: Cheat database path not configured
+ * - CHEAT_AUTO_LOAD_NO_CORE_DIR: Core-specific cheat directory missing
+ * - CHEAT_AUTO_LOAD_NO_MATCHES: No matching cheat files found
+ * - CHEAT_AUTO_LOAD_MULTIPLE_MATCHES: Multiple candidates require manual selection
+ * - CHEAT_AUTO_LOAD_LOAD_FAILED: Cheat file found but failed to load
+ * - CHEAT_AUTO_LOAD_OVERRIDE_INVALID: Override file set but invalid/missing
+ *
+ * @param[out] loaded_exact_match Set to true if exact name match was loaded
+ * @param[out] has_multiple_candidates Set to true if multiple candidates found  
+ * @param[out] num_found Total number of matching cheat files found
+ *
+ * @return Detailed error code indicating success or specific failure reason
+ *
+ * @note Input parameters must not be NULL - function validates parameters
+ * @note Automatically clears invalid overrides to maintain system consistency
+ * @note Uses comprehensive logging for debugging and troubleshooting
+ *
+ * @see enum cheat_auto_load_result for complete error code documentation
+ */
+enum cheat_auto_load_result cheat_manager_auto_resolve_and_load_enhanced(
+    bool *loaded_exact_match, bool *has_multiple_candidates, unsigned *num_found);
+
+/**
+ * @brief Sets a manual cheat file override for the current game
+ *
+ * Allows users to manually specify which cheat file should be used for the currently
+ * loaded content, bypassing automatic resolution. This is particularly useful for
+ * ROM hacks or games where automatic matching fails due to non-standard naming.
+ *
+ * The override takes priority over automatic matching and persists until:
+ * - Different content is loaded
+ * - Override is manually cleared via cheat_manager_clear_current_game_override()
+ * - Override file becomes invalid/missing (automatically cleared)
+ *
+ * @param[in] cheat_file_path Full path to cheat file to use as override
+ *                           Pass NULL or empty string to clear override
+ *
+ * @note Override is stored in memory only, not persisted to configuration
+ * @note File existence is not validated at set time, only during loading
+ * @note Function is safe to call with NULL or invalid paths
+ *
+ * @see cheat_manager_get_current_game_override() to query current override
+ * @see cheat_manager_clear_current_game_override() to remove override  
+ */
 void cheat_manager_set_current_game_override(const char *cheat_file_path);
+
+/**
+ * @brief Retrieves the current cheat file override path
+ *
+ * Returns the cheat file path currently set as override for the loaded content,
+ * or NULL if no override is active. The returned path should not be modified
+ * and may become invalid after subsequent cheat manager operations.
+ *
+ * @return Current override cheat file path, or NULL if no override set
+ *
+ * @note Returned pointer is valid until next cheat_manager operation
+ * @note Does not validate that the file still exists on disk
+ * @note Returns NULL for empty override paths
+ *
+ * @see cheat_manager_set_current_game_override() to set override
+ */
 const char *cheat_manager_get_current_game_override(void);
+
+/**
+ * @brief Clears the current cheat file override
+ *
+ * Removes any manual override set for the current game, allowing automatic
+ * cheat resolution to resume normal operation. This is equivalent to calling
+ * cheat_manager_set_current_game_override(NULL).
+ *
+ * @note Safe to call even when no override is set
+ * @note Operation is logged for debugging purposes
+ *
+ * @see cheat_manager_set_current_game_override() for setting overrides
+ */
 void cheat_manager_clear_current_game_override(void);
 
 bool cheat_manager_copy_idx_to_working(unsigned idx);

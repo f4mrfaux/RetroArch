@@ -1361,7 +1361,8 @@ void command_event_init_cheats(
    cheat_manager_alloc_if_empty();
    
    /* Try auto-resolution if enabled */
-   if (cheat_manager_state.auto_load_enabled)
+   settings_t *settings = config_get_ptr();
+   if (settings && settings->bools.cheats_enable_auto_load)
    {
       bool loaded_exact_match = false;
       bool has_multiple_candidates = false;

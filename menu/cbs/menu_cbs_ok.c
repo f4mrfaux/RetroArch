@@ -4436,12 +4436,16 @@ static int action_ok_cheat_auto_load_toggle(const char *path,
       const char *label, unsigned type, size_t idx, size_t entry_idx)
 {
    struct menu_state *menu_st = menu_state_get_ptr();
+   settings_t *settings       = config_get_ptr();
+   
+   if (!settings)
+      return 0;
    
    /* Toggle the auto-load setting */
-   cheat_manager_state.auto_load_enabled = !cheat_manager_state.auto_load_enabled;
+   settings->bools.cheats_enable_auto_load = !settings->bools.cheats_enable_auto_load;
    
    RARCH_LOG("[Cheats][auto] Auto-load cheats %s\n", 
-         cheat_manager_state.auto_load_enabled ? "enabled" : "disabled");
+         settings->bools.cheats_enable_auto_load ? "enabled" : "disabled");
    
    /* Refresh menu to update the toggle display */
    menu_st->flags |= MENU_ST_FLAG_ENTRIES_NEED_REFRESH
@@ -9018,7 +9022,7 @@ static int menu_cbs_init_bind_ok_compare_label(menu_file_list_cbs_t *cbs,
    }
 
    /* Handle custom auto-load cheat toggle */
-   if (string_is_equal(label, "cheat_auto_load_toggle"))
+   if (string_is_equal(label, "cheats_auto_load"))
    {
       BIND_ACTION_OK(cbs, action_ok_cheat_auto_load_toggle);
       return 0;

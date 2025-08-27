@@ -1,0 +1,5 @@
+cheats = 1
+
+cheat0_desc = "USA Version - Max HP"
+cheat0_code = "82005274 03E7"
+cheat0_enable = false

@@ -1287,6 +1287,9 @@
 /* When set, all enabled cheats are auto-applied when a game is loaded. */
 #define DEFAULT_APPLY_CHEATS_AFTER_LOAD false
 
+/* When set, cheats are automatically loaded for matching content. */
+#define DEFAULT_CHEATS_ENABLE_AUTO_LOAD false
+
 
 #if defined(RETROFW) || defined(MIYOO)
 /*RETROFW jz4760 has significant slowdown with default settings */

@@ -8486,14 +8486,17 @@ unsigned menu_displaylist_build_list(
                   count++;
                {
                   char auto_load_label[128];
+                  settings_t *settings = config_get_ptr();
                   snprintf(auto_load_label, sizeof(auto_load_label), 
-                        "Auto-load cheats: %s", 
-                        cheat_manager_state.auto_load_enabled ? "ON" : "OFF");
+                        "Auto-Load Cheats: %s", 
+                        (settings && settings->bools.cheats_enable_auto_load) ? 
+                        msg_hash_to_str(MENU_ENUM_LABEL_VALUE_ON) : 
+                        msg_hash_to_str(MENU_ENUM_LABEL_VALUE_OFF));
                   
                   if (menu_entries_append(list,
                            auto_load_label,
-                           "cheat_auto_load_toggle",
-                           0, /* placeholder enum */
+                           "cheats_auto_load",
+                           0,
                            MENU_SETTING_ACTION, 0, 0, NULL))
                      count++;
                }
@@ -8511,13 +8514,13 @@ unsigned menu_displaylist_build_list(
                   }
                   else
                   {
-                     strlcpy(override_label, "Set cheat override for this game", sizeof(override_label));
+                     strlcpy(override_label, "Set Cheat Override", sizeof(override_label));
                   }
                   
                   if (menu_entries_append(list,
                            override_label,
                            "cheat_set_override",
-                           0, /* placeholder enum */
+                           0,
                            MENU_SETTING_ACTION, 0, 0, NULL))
                      count++;
                      
@@ -8525,9 +8528,9 @@ unsigned menu_displaylist_build_list(
                   if (override_path)
                   {
                      if (menu_entries_append(list,
-                              "Clear cheat override",
-                              "cheat_clear_override", 
-                              0, /* placeholder enum */
+                              "Clear Override",
+                              "cheat_clear_override",
+                              0,
                               MENU_SETTING_ACTION, 0, 0, NULL))
                         count++;
                   }

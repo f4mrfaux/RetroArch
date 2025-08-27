@@ -28,6 +28,7 @@
 #include <string/stdstring.h>
 #include <retro_miscellaneous.h>
 #include <features/features_cpu.h>
+#include <playlists/label_sanitization.h>
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -44,6 +45,7 @@
 #include "cheat_manager.h"
 
 #include "msg_hash.h"
+#include "paths.h"
 #include "retroarch.h"
 #include "runloop.h"
 #include "dynamic.h"
@@ -802,7 +804,31 @@ unsigned cheat_manager_auto_resolve_and_load_for_current_content(
       return 0;
       
    core_name = sysinfo.library_name;
-   game_name = path_basename_nocompression(runloop_st->name.cheatfile);
+   
+   /* Use proper content path and sanitize game name for better matching */
+   const char *content_path = path_get(RARCH_PATH_BASENAME);
+   if (content_path)
+   {
+      static char sanitized_name[PATH_MAX_LENGTH];
+      
+      /* Get basename without compression extensions */
+      strlcpy(sanitized_name, path_basename_nocompression(content_path), 
+              sizeof(sanitized_name));
+      
+      /* Apply RetroArch's standard label sanitization - removes regions, brackets */
+      label_remove_parens_and_brackets(sanitized_name);
+      
+      game_name = sanitized_name;
+      
+      RARCH_LOG("[Cheats][auto] Content: \"%s\" -> Sanitized: \"%s\"\n", 
+                path_basename_nocompression(content_path), game_name);
+   }
+   else
+   {
+      /* Fallback to original method */
+      game_name = path_basename_nocompression(runloop_st->name.cheatfile);
+      RARCH_LOG("[Cheats][auto] Using fallback game name: \"%s\"\n", game_name);
+   }
    
    if (settings)
       path_cheat_database = settings->paths.path_cheat_database;
@@ -833,8 +859,8 @@ unsigned cheat_manager_auto_resolve_and_load_for_current_content(
    {
       const char *cheat_file_basename = path_basename_nocompression(dir_list->elems[i].data);
       
-      /* Check for exact game name match (without extension) */
-      if (string_is_equal(cheat_file_basename, game_name))
+      /* Check for exact game name match (without extension) - case insensitive */
+      if (string_is_equal_case_insensitive(cheat_file_basename, game_name))
       {
          RARCH_LOG("[Cheats][auto] Exact match found: %s\n", dir_list->elems[i].data);
          
@@ -856,7 +882,7 @@ unsigned cheat_manager_auto_resolve_and_load_for_current_content(
          
          /* Check for partial match (contains game name) */
          if (strcasestr(cheat_file_basename, game_name) && 
-             !string_is_equal(cheat_file_basename, game_name))
+             !string_is_equal_case_insensitive(cheat_file_basename, game_name))
          {
             candidates_found++;
          }
@@ -870,13 +896,13 @@ unsigned cheat_manager_auto_resolve_and_load_for_current_content(
             const char *cheat_file_basename = path_basename_nocompression(dir_list->elems[i].data);
             
             if (strcasestr(cheat_file_basename, game_name) && 
-                !string_is_equal(cheat_file_basename, game_name))
+                !string_is_equal_case_insensitive(cheat_file_basename, game_name))
             {
                RARCH_LOG("[Cheats][auto] Single candidate found: %s\n", dir_list->elems[i].data);
                
                if (cheat_manager_load(dir_list->elems[i].data, true))
                {
-                  *loaded_exact_match = true;
+                  *loaded_exact_match = false;  /* Partial match */
                   break;
                }
             }
@@ -884,13 +910,432 @@ unsigned cheat_manager_auto_resolve_and_load_for_current_content(
       }
       else if (candidates_found > 1)
       {
-         *has_multiple_candidates = true;
-         RARCH_LOG("[Cheats][auto] Multiple candidates found: %u\n", candidates_found);
+         /* Multiple candidates - try basic smart selection */
+         const char *best_candidate = NULL;
+         const char *original_content_name = path_get(RARCH_PATH_BASENAME);
+         int best_score = -1;
+         
+         for (size_t i = 0; i < dir_list->size; i++)
+         {
+            const char *cheat_file_path = dir_list->elems[i].data;
+            const char *cheat_file_basename = path_basename_nocompression(cheat_file_path);
+            
+            if (!strcasestr(cheat_file_basename, game_name) || 
+                string_is_equal_case_insensitive(cheat_file_basename, game_name))
+               continue;
+            
+            int score = 0;
+            
+            /* Basic region matching for original function */
+            if (original_content_name)
+            {
+               const char *original_basename = path_basename_nocompression(original_content_name);
+               const char *regions[] = {"USA", "Europe", "Japan", "US", "EU", "JP"};
+               
+               for (size_t r = 0; r < sizeof(regions)/sizeof(regions[0]); r++)
+               {
+                  bool original_has = strcasestr(original_basename, regions[r]) != NULL;
+                  bool cheat_has = strcasestr(cheat_file_basename, regions[r]) != NULL;
+                  
+                  if (original_has && cheat_has)
+                     score += 100;  /* Region match */
+               }
+            }
+            
+            /* Prefer shorter/closer matches */
+            size_t len_diff = strlen(cheat_file_basename) - strlen(game_name);
+            score += (50 - (int)len_diff);
+            
+            if (score > best_score)
+            {
+               best_score = score;
+               best_candidate = cheat_file_path;
+            }
+         }
+         
+         /* If we found a decent candidate (score > 25), use it */
+         if (best_candidate && best_score > 25)
+         {
+            RARCH_LOG("[Cheats][auto] Smart selection chose: %s (score: %d)\n", 
+                      path_basename_nocompression(best_candidate), best_score);
+            
+            if (cheat_manager_load(best_candidate, true))
+            {
+               *loaded_exact_match = false;  /* Partial match */
+               candidates_found = 1;  /* Indicate we loaded something */
+            }
+            else
+            {
+               *has_multiple_candidates = true;
+               RARCH_LOG("[Cheats][auto] Smart selection failed, multiple candidates found: %u\n", candidates_found);
+            }
+         }
+         else
+         {
+            *has_multiple_candidates = true;
+            RARCH_LOG("[Cheats][auto] Multiple candidates found: %u\n", candidates_found);
+         }
       }
    }
    
    string_list_free(dir_list);
    return candidates_found;
+}
+
+/* Enhanced auto-resolve with detailed error reporting */
+enum cheat_auto_load_result cheat_manager_auto_resolve_and_load_enhanced(
+   bool *loaded_exact_match,
+   bool *has_multiple_candidates,
+   unsigned *num_found)
+{
+   char cheat_dir[PATH_MAX_LENGTH];
+   char search_pattern[PATH_MAX_LENGTH];
+   struct string_list *dir_list      = NULL;
+   struct retro_system_info sysinfo;
+   runloop_state_t *runloop_st       = runloop_state_get_ptr();
+   const char *core_name             = NULL;
+   const char *game_name             = NULL;
+   const char *path_cheat_database   = NULL;
+   unsigned candidates_found         = 0;
+   settings_t *settings              = config_get_ptr();
+   enum cheat_auto_load_result result = CHEAT_AUTO_LOAD_NO_MATCHES;
+   
+   /* Initialize output parameters */
+   if (loaded_exact_match)
+      *loaded_exact_match = false;
+   if (has_multiple_candidates)
+      *has_multiple_candidates = false;
+   if (num_found)
+      *num_found = 0;
+   
+   /* Validate input parameters */
+   if (!loaded_exact_match || !has_multiple_candidates || !num_found)
+   {
+      RARCH_ERR("[Cheats][auto] Invalid input parameters\n");
+      return CHEAT_AUTO_LOAD_NO_CONTENT;
+   }
+   
+   /* Check for override first - takes priority over auto-matching */
+   const char *override_path = cheat_manager_get_current_game_override();
+   if (override_path && *override_path)
+   {
+      if (!path_is_valid(override_path))
+      {
+         RARCH_WARN("[Cheats][override] Override file no longer exists: \"%s\"\n", override_path);
+         cheat_manager_clear_current_game_override();
+         return CHEAT_AUTO_LOAD_OVERRIDE_INVALID;
+      }
+      
+      RARCH_LOG("[Cheats][override] Using override cheat file: \"%s\"\n", override_path);
+      
+      if (cheat_manager_load(override_path, true))
+      {
+         *loaded_exact_match = true;
+         *num_found = 1;
+         RARCH_LOG("[Cheats][override] Successfully loaded override cheat file\n");
+         return CHEAT_AUTO_LOAD_SUCCESS;
+      }
+      else
+      {
+         RARCH_ERR("[Cheats][override] Failed to load override cheat file: \"%s\"\n", override_path);
+         cheat_manager_clear_current_game_override();
+         return CHEAT_AUTO_LOAD_LOAD_FAILED;
+      }
+   }
+   
+   /* Get core system info */
+   if (!core_get_system_info(&sysinfo))
+   {
+      RARCH_ERR("[Cheats][auto] Failed to get core system info\n");
+      return CHEAT_AUTO_LOAD_NO_CORE;
+   }
+      
+   core_name = sysinfo.library_name;
+   if (string_is_empty(core_name))
+   {
+      RARCH_ERR("[Cheats][auto] Core name is empty\n");
+      return CHEAT_AUTO_LOAD_NO_CORE;
+   }
+   
+   /* Get and sanitize content name */
+   const char *content_path = path_get(RARCH_PATH_BASENAME);
+   if (content_path && *content_path)
+   {
+      static char sanitized_name[PATH_MAX_LENGTH];
+      
+      strlcpy(sanitized_name, path_basename_nocompression(content_path), 
+              sizeof(sanitized_name));
+      label_remove_parens_and_brackets(sanitized_name);
+      
+      game_name = sanitized_name;
+      RARCH_LOG("[Cheats][auto] Content: \"%s\" -> Sanitized: \"%s\"\n", 
+                path_basename_nocompression(content_path), game_name);
+   }
+   else
+   {
+      if (runloop_st && runloop_st->name.cheatfile[0])
+      {
+         game_name = path_basename_nocompression(runloop_st->name.cheatfile);
+         RARCH_LOG("[Cheats][auto] Using fallback game name: \"%s\"\n", game_name);
+      }
+      else
+      {
+         RARCH_ERR("[Cheats][auto] No content loaded\n");
+         return CHEAT_AUTO_LOAD_NO_CONTENT;
+      }
+   }
+   
+   if (string_is_empty(game_name))
+   {
+      RARCH_ERR("[Cheats][auto] Game name is empty\n");
+      return CHEAT_AUTO_LOAD_NO_CONTENT;
+   }
+   
+   /* Get cheat database path */
+   if (settings)
+      path_cheat_database = settings->paths.path_cheat_database;
+   
+   if (string_is_empty(path_cheat_database))
+   {
+      RARCH_ERR("[Cheats][auto] Cheat database path not configured\n");
+      return CHEAT_AUTO_LOAD_NO_DATABASE;
+   }
+   
+   /* Build and validate core-specific cheat directory */
+   fill_pathname_join_special(cheat_dir, path_cheat_database, core_name, sizeof(cheat_dir));
+   
+   if (!path_is_directory(cheat_dir))
+   {
+      RARCH_LOG("[Cheats][auto] Core cheat directory does not exist: \"%s\"\n", cheat_dir);
+      return CHEAT_AUTO_LOAD_NO_CORE_DIR;
+   }
+   
+   /* Search for cheat files */
+   snprintf(search_pattern, sizeof(search_pattern), "%s*", 
+         path_basename_nocompression(game_name));
+   
+   dir_list = dir_list_new(cheat_dir, "cht", false, true, false, false);
+   
+   if (!dir_list)
+   {
+      RARCH_ERR("[Cheats][auto] Failed to scan cheat directory: \"%s\"\n", cheat_dir);
+      return CHEAT_AUTO_LOAD_NO_CORE_DIR;
+   }
+   
+   if (dir_list->size == 0)
+   {
+      RARCH_LOG("[Cheats][auto] No cheat files found in directory: \"%s\"\n", cheat_dir);
+      result = CHEAT_AUTO_LOAD_NO_MATCHES;
+      goto cleanup;
+   }
+   
+   RARCH_LOG("[Cheats][auto] Scanning %zu cheat files for game: \"%s\"\n", 
+             dir_list->size, game_name);
+   
+   /* Look for exact matches first */
+   for (size_t i = 0; i < dir_list->size; i++)
+   {
+      const char *cheat_file_basename = path_basename_nocompression(dir_list->elems[i].data);
+      
+      if (string_is_equal_case_insensitive(cheat_file_basename, game_name))
+      {
+         RARCH_LOG("[Cheats][auto] Exact match found: %s\n", dir_list->elems[i].data);
+         
+         if (cheat_manager_load(dir_list->elems[i].data, true))
+         {
+            *loaded_exact_match = true;
+            candidates_found = 1;
+            result = CHEAT_AUTO_LOAD_SUCCESS;
+            RARCH_LOG("[Cheats][auto] Successfully loaded exact match\n");
+            goto cleanup;
+         }
+         else
+         {
+            RARCH_ERR("[Cheats][auto] Failed to load exact match: %s\n", dir_list->elems[i].data);
+            result = CHEAT_AUTO_LOAD_LOAD_FAILED;
+            goto cleanup;
+         }
+      }
+   }
+   
+   /* Smart candidate selection with priority scoring */
+   typedef struct {
+      const char *file_path;
+      const char *basename;
+      int score;
+      bool is_exact_match;
+   } cheat_candidate_t;
+   
+   cheat_candidate_t *candidates = NULL;
+   size_t candidates_capacity = 16;
+   
+   candidates = (cheat_candidate_t*)calloc(candidates_capacity, sizeof(cheat_candidate_t));
+   if (!candidates) 
+   {
+      result = CHEAT_AUTO_LOAD_NO_MATCHES;
+      goto cleanup;
+   }
+   
+   /* Score and collect all matching candidates */
+   for (size_t i = 0; i < dir_list->size; i++)
+   {
+      const char *cheat_file_path = dir_list->elems[i].data;
+      const char *cheat_file_basename = path_basename_nocompression(cheat_file_path);
+      
+      if (!strcasestr(cheat_file_basename, game_name))
+         continue;
+      
+      /* Expand candidates array if needed */
+      if (candidates_found >= candidates_capacity)
+      {
+         candidates_capacity *= 2;
+         cheat_candidate_t *new_candidates = (cheat_candidate_t*)realloc(candidates, 
+            candidates_capacity * sizeof(cheat_candidate_t));
+         if (!new_candidates)
+         {
+            free(candidates);
+            result = CHEAT_AUTO_LOAD_NO_MATCHES;
+            goto cleanup;
+         }
+         candidates = new_candidates;
+      }
+      
+      cheat_candidate_t *candidate = &candidates[candidates_found];
+      candidate->file_path = cheat_file_path;
+      candidate->basename = cheat_file_basename; 
+      candidate->score = 0;
+      candidate->is_exact_match = string_is_equal_case_insensitive(cheat_file_basename, game_name);
+      
+      /* Priority scoring system */
+      
+      /* 1. Exact match gets highest priority */
+      if (candidate->is_exact_match)
+         candidate->score += 1000;
+      
+      /* 2. Region preference scoring */
+      const char *original_content_name = path_get(RARCH_PATH_BASENAME);
+      if (original_content_name)
+      {
+         const char *original_basename = path_basename_nocompression(original_content_name);
+         
+         /* Check for common regions and prefer matching ones */
+         const char *regions[] = {"USA", "Europe", "Japan", "World", "En", "US", "EU", "JP"};
+         for (size_t r = 0; r < sizeof(regions)/sizeof(regions[0]); r++)
+         {
+            bool original_has_region = strcasestr(original_basename, regions[r]) != NULL;
+            bool cheat_has_region = strcasestr(cheat_file_basename, regions[r]) != NULL;
+            
+            if (original_has_region && cheat_has_region)
+               candidate->score += 200;  /* Matching region */
+            else if (!original_has_region && !cheat_has_region)
+               candidate->score += 50;   /* Both don't specify region */
+         }
+      }
+      
+      /* 3. Filename similarity scoring */
+      size_t game_len = strlen(game_name);
+      size_t cheat_len = strlen(cheat_file_basename);
+      
+      /* Prefer closer length matches */
+      if (cheat_len >= game_len)
+      {
+         size_t diff = cheat_len - game_len;
+         candidate->score += (100 - (int)diff);  /* Closer length = higher score */
+      }
+      
+      /* 4. Bonus for common version patterns */
+      if (strcasestr(cheat_file_basename, "Rev") || strcasestr(cheat_file_basename, "v1"))
+         candidate->score += 25;
+      
+      candidates_found++;
+      RARCH_LOG("[Cheats][auto] Candidate: %s (score: %d)\n", 
+                cheat_file_basename, candidate->score);
+   }
+   
+   if (candidates_found == 0)
+   {
+      RARCH_LOG("[Cheats][auto] No matching cheat files found for: \"%s\"\n", game_name);
+      result = CHEAT_AUTO_LOAD_NO_MATCHES;
+   }
+   else if (candidates_found == 1)
+   {
+      /* Single match - load it */
+      RARCH_LOG("[Cheats][auto] Loading single candidate: %s (score: %d)\n", 
+                candidates[0].basename, candidates[0].score);
+      
+      if (cheat_manager_load(candidates[0].file_path, true))
+      {
+         *loaded_exact_match = candidates[0].is_exact_match;
+         result = CHEAT_AUTO_LOAD_SUCCESS;
+         RARCH_LOG("[Cheats][auto] Successfully loaded candidate\n");
+      }
+      else
+      {
+         RARCH_ERR("[Cheats][auto] Failed to load candidate: %s\n", candidates[0].file_path);
+         result = CHEAT_AUTO_LOAD_LOAD_FAILED;
+      }
+   }
+   else 
+   {
+      /* Multiple candidates - find best match using priority scoring */
+      
+      /* Sort candidates by score (highest first) */
+      for (size_t i = 0; i < candidates_found - 1; i++)
+      {
+         for (size_t j = i + 1; j < candidates_found; j++)
+         {
+            if (candidates[j].score > candidates[i].score)
+            {
+               cheat_candidate_t temp = candidates[i];
+               candidates[i] = candidates[j];
+               candidates[j] = temp;
+            }
+         }
+      }
+      
+      /* Check if we have a clear winner (significantly higher score) */
+      int best_score = candidates[0].score;
+      int second_score = (candidates_found > 1) ? candidates[1].score : 0;
+      int score_diff = best_score - second_score;
+      
+      /* If clear winner (score difference > 50) or exact match winner, auto-select */
+      if (score_diff > 50 || candidates[0].is_exact_match)
+      {
+         RARCH_LOG("[Cheats][auto] Clear winner found: %s (score: %d vs %d)\n",
+                   candidates[0].basename, best_score, second_score);
+         
+         if (cheat_manager_load(candidates[0].file_path, true))
+         {
+            *loaded_exact_match = candidates[0].is_exact_match;
+            result = CHEAT_AUTO_LOAD_SUCCESS;
+            RARCH_LOG("[Cheats][auto] Successfully loaded best candidate\n");
+         }
+         else
+         {
+            RARCH_ERR("[Cheats][auto] Failed to load best candidate: %s\n", candidates[0].file_path);
+            result = CHEAT_AUTO_LOAD_LOAD_FAILED;
+         }
+      }
+      else
+      {
+         /* Ambiguous - require manual selection */
+         RARCH_LOG("[Cheats][auto] Multiple similar candidates found (%u), manual selection required\n", candidates_found);
+         for (size_t i = 0; i < candidates_found && i < 5; i++)  /* Log top 5 */
+         {
+            RARCH_LOG("[Cheats][auto]   %zu. %s (score: %d)\n", i+1, candidates[i].basename, candidates[i].score);
+         }
+         *has_multiple_candidates = true;
+         result = CHEAT_AUTO_LOAD_MULTIPLE_MATCHES;
+      }
+   }
+   
+   if (candidates)
+      free(candidates);
+   
+cleanup:
+   *num_found = candidates_found;
+   string_list_free(dir_list);
+   return result;
 }
 
 void cheat_manager_set_current_game_override(const char *cheat_file_path)
